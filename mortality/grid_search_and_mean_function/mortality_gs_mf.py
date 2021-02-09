@@ -6,42 +6,43 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import copy
 import GPy
-from sklearn.metrics import mean_absolute_error as mae, mean_squared_error as rmse
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 
-def gp_regression(x, y, params):
+
+
+
+def gp_regression(x, y, cwgp_model):
 	kernel = GPy.kern.Matern32(1)
 
 	ratio = 0.9
 	length = len(x)
 	train = int(ratio*length)
 	train_up, train_low = train, train-train
-
+ 
 
 	model = GPy.models.GPRegression(x[train_low:train_up], y[train_low:train_up], kernel=kernel)
 	model.optimize()
+	y_pred = model.predict(x[train_up:])[0]
+	y_true = y[train_up:]
 
-	return model
+	for cwgp in cwgp_model[::-1]:
+		y_pred = cwgp.phi.inv_comp_phi(cwgp.phi.res.x, y_pred)
+		y_true = cwgp.phi.inv_comp_phi(cwgp.phi.res.x, y_true)
 
-def gp_wrapper(x, y, params):
-	cwgp = {}
-	df = pd.DataFrame()
-	t_data = copy.deepcopy(data)
-	for index,param in enumerate(params):
-		cwgp[index] = {}
-		for i,(t,d) in enumerate(param):
-			cwgp_model = CWGP(t,n=d)
-			cwgp_model_p = cwgp_model.fit(t_data).x
-			t_data, t_data_d = cwgp_model.phi.comp_phi(cwgp_model_p,t_data)
-			cwgp[index][i] = (cwgp_model)
+	mae = mean_absolute_error(y_true, y_pred)
+	rmse = mean_squared_error(y_true, y_pred, squared=False)
+
+	print(mae,rmse)
+	return model, mae, rmse
 
 
 	
 
 def grid_search(estimator, x, y, params):
 	c = params.pop("c",2)
-	n = params.pop("n",[1,2,3])
-	transformations = params.pop("transformations",["sa","sal"])
+	n = params.pop("n",[2,3])
+	transformations = params.pop("transformations",["sa","sal","box_cox"])
 
 	cwgp_params = [transformations,n]
 
@@ -52,9 +53,18 @@ def grid_search(estimator, x, y, params):
 		if param not in params_combination:
 			params_combination.append(param)
 
-	print(params_combination)
-	estimator(y, params_combination)
-
+	cwgp = {}
+	for index,param in enumerate(params_combination):
+		t_data = copy.deepcopy(y)
+		cwgp[index] = {"cwgp_combination":param}
+		model_holder = []
+		for t,d in param:
+			cwgp_model = CWGP(t,n=d)
+			cwgp_model.fit(t_data)
+			t_data, t_data_d = cwgp_model.phi.comp_phi(cwgp_model.phi.res.x,t_data)
+			model_holder.append(cwgp_model)
+		cwgp[index]["result"] = estimator(x,t_data,model_holder)
+	return cwgp
 
 if __name__ == '__main__':
 	CSV_FIlE = "../japan3.csv"
@@ -66,4 +76,5 @@ if __name__ == '__main__':
 	rate = df_all[age]["rate"].to_numpy().reshape(-1,1)
 	year = df_all[age]["year"].to_numpy().reshape(-1,1)
 
-	grid_search(gp_wrapper, year, rate,{})
+	result = grid_search(gp_regression, year, rate,{})
+	print(result)
