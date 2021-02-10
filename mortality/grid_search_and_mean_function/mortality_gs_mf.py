@@ -34,14 +34,14 @@ def gp_regression(x, y, cwgp_model):
 	rmse = mean_squared_error(y_true, y_pred, squared=False)
 
 	print(mae,rmse)
-	return model, mae, rmse
+	return mae, rmse
 
 
 	
 
 def grid_search(estimator, x, y, params):
-	c = params.pop("c",2)
-	n = params.pop("n",[2,3])
+	c = params.pop("c",3)
+	n = params.pop("n",[1,2,3])
 	transformations = params.pop("transformations",["sa","sal","box_cox"])
 
 	cwgp_params = [transformations,n]
@@ -77,4 +77,7 @@ if __name__ == '__main__':
 	year = df_all[age]["year"].to_numpy().reshape(-1,1)
 
 	result = grid_search(gp_regression, year, rate,{})
-	print(result)
+
+	output = pd.DataFrame(result).transpose()
+
+	output.to_csv("./ssb123_3_90.csv")
